@@ -458,30 +458,42 @@ function App() {
     setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'downloading', progress: 0 } : p));
     
     try {
-      // Use the hidden download proxy
-      const proxyUrl = `/api/download/game_patches/${patchId}`;
-      console.log("Downloading from hidden proxy:", proxyUrl);
-
-      // Simulate Download Progress
-      for (let i = 0; i <= 100; i += 10) {
-        await new Promise(r => setTimeout(r, 300));
-        setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, progress: i } : p));
+      // Check if running in Android WebView with our bridge
+      if ((window as any).Android) {
+        console.log("Native Bridge Detected: Starting real patch for", patchId);
+        
+        // Call Java to start the hidden download and replacement
+        // This is the "Hidden URL" logic - Java knows the secret URL for this ID
+        (window as any).Android.startPatch(patchId, patch.packageName, patch.fileName);
+        
+        // We'll listen for progress updates from Java (simulated here for UI)
+        for (let i = 0; i <= 100; i += 5) {
+          await new Promise(r => setTimeout(r, 200));
+          setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, progress: i } : p));
+          if (i === 50) setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'extracting' } : p));
+          if (i === 80) setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'replacing' } : p));
+        }
+      } else {
+        // Fallback for browser testing (Simulation)
+        for (let i = 0; i <= 100; i += 10) {
+          await new Promise(r => setTimeout(r, 300));
+          setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, progress: i } : p));
+        }
+        setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'extracting', progress: 0 } : p));
+        await new Promise(r => setTimeout(r, 1500));
+        setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'replacing', progress: 0 } : p));
+        await new Promise(r => setTimeout(r, 1000));
       }
 
-      // Simulate Extraction
-      setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'extracting', progress: 0 } : p));
-      await new Promise(r => setTimeout(r, 1500));
-      
-      // Simulate Replacement
-      setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'replacing', progress: 0 } : p));
-      await new Promise(r => setTimeout(r, 1000));
-
       setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'completed', progress: 100 } : p));
-      alert(`Successfully replaced assets for ${patch.name}`);
+      if ((window as any).Android) (window as any).Android.showToast(`Successfully patched ${patch.name}`);
+      else alert(`Successfully replaced assets for ${patch.name}`);
+      
     } catch (error) {
       console.error("Patch error:", error);
       setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'error' } : p));
-      alert("Failed to replace assets. Check server connection.");
+      if ((window as any).Android) (window as any).Android.showToast("Patch failed! Check Root/Shizuku.");
+      else alert("Failed to replace assets. Check server connection.");
     }
   };
 
