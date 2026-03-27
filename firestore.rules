@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Library validation
+    function isValidLibrary(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.targetPath is string && data.targetPath.size() > 0 &&
+             data.downloadUrl is string && data.downloadUrl.matches("^https?://.*") &&
+             data.version is string && data.version.size() > 0;
+    }
+
+    function isValidSystemPath(data) {
+      return data.path is string && data.path.size() > 0 && data.path.size() < 255;
+    }
+
+    match /libraries/{libId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && isValidLibrary(request.resource.data);
+    }
+
+    match /system_paths/{pathId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && isValidSystemPath(request.resource.data);
+    }
+  }
+}

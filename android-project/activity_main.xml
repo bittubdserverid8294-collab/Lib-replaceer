@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0A0A0B"
+    android:padding="24dp">
+
+    <TextView
+        android:id="@+id/title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="ROOTLIB HUB NATIVE"
+        android:textColor="#00FF41"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="20dp"/>
+
+    <TextView
+        android:id="@+id/status_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="STATUS: UNKNOWN"
+        android:textColor="#88888B"
+        android:fontFamily="monospace"
+        android:layout_below="@id/title"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="10dp"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_centerInParent="true"
+        android:gap="16dp">
+
+        <Button
+            android:id="@+id/btn_root"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:text="REQUEST ROOT ACCESS"
+            android:backgroundTint="#151518"
+            android:textColor="#FFFFFF"
+            android:layout_marginBottom="16dp"/>
+
+        <Button
+            android:id="@+id/btn_swap"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:text="PERFORM LIB SWAP"
+            android:backgroundTint="#00FF41"
+            android:textColor="#0A0A0B"
+            android:textStyle="bold"/>
+
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="v1.0.0 NATIVE BUILD"
+        android:textColor="#444444"
+        android:layout_alignParentBottom="true"
+        android:layout_centerHorizontal="true"
+        android:textSize="10sp"/>
+
+</RelativeLayout>

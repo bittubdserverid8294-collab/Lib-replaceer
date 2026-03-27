@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "Library": {
+      "title": "Library",
+      "description": "A system library replacement definition",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Display name of the library" },
+        "targetPath": { "type": "string", "description": "Path in the Android system (e.g. /system/lib/libc.so)" },
+        "downloadUrl": { "type": "string", "description": "URL to download the replacement .so file" },
+        "version": { "type": "string", "description": "Version of the replacement" },
+        "notes": { "type": "string", "description": "Developer notes" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "targetPath", "downloadUrl", "version"]
+    },
+    "SystemPath": {
+      "title": "SystemPath",
+      "description": "A system path for library replacement",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string", "description": "Path in the Android system (e.g. /system/lib/libc.so)" },
+        "description": { "type": "string", "description": "Description of the path" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["path"]
+    }
+  },
+  "firestore": {
+    "/libraries": {
+      "schema": "Library",
+      "description": "Collection of available library replacements"
+    },
+    "/system_paths": {
+      "schema": "SystemPath",
+      "description": "Collection of system paths for library replacement"
+    }
+  }
+}
