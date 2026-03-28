@@ -1,4 +1,4 @@
-package com.rajnish.modz;
+package com.rootlib.hub;
 
 import android.content.Context;
 import android.webkit.JavascriptInterface;

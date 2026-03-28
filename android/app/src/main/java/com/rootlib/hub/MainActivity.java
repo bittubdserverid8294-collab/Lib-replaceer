@@ -1,4 +1,4 @@
-package com.rajnish.modz;
+package com.rootlib.hub;
 
 import android.app.Activity;
 import android.os.Bundle;
