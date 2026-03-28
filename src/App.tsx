@@ -836,30 +836,119 @@ function App() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-6">
-                  <div className="glass-panel overflow-hidden flex flex-col h-[500px]">
+                  <div className="glass-panel overflow-hidden flex flex-col h-[400px]">
                     <div className="p-3 bg-white/5 border-b border-border flex items-center justify-between">
                       <span className="text-xs font-mono text-text-muted">MainActivity.java</span>
                       <button className="text-accent text-xs hover:underline">Copy Code</button>
                     </div>
                     <pre className="flex-1 p-4 font-mono text-xs text-text-muted overflow-auto bg-black/50">
-{`package com.rajnish.modz;
+{`package com.rootlib.hub;
 
-import android.os.Bundle;
 import android.app.Activity;
-import android.widget.TextView;
-import android.widget.Button;
-import android.view.View;
-import android.widget.Toast;
-import java.io.DataOutputStream;
+import android.os.Bundle;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 
 public class MainActivity extends Activity {
+    private WebView myWebView;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        
-        // Root logic implementation...
-        // Use Runtime.getRuntime().exec("su")
+
+        myWebView = (WebView) findViewById(R.id.webview);
+        WebSettings webSettings = myWebView.getSettings();
+        webSettings.setJavaScriptEnabled(true);
+        webSettings.setDomStorageEnabled(true);
+        webSettings.setAllowFileAccess(true);
+        webSettings.setAllowContentAccess(true);
+
+        myWebView.addJavascriptInterface(new WebAppInterface(this, myWebView), "Android");
+        myWebView.setWebViewClient(new WebViewClient());
+        myWebView.loadUrl("file:///android_asset/index.html");
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (myWebView.canGoBack()) {
+            myWebView.goBack();
+        } else {
+            super.onBackPressed();
+        }
+    }
+}`}
+                    </pre>
+                  </div>
+
+                  <div className="glass-panel overflow-hidden flex flex-col h-[400px]">
+                    <div className="p-3 bg-white/5 border-b border-border flex items-center justify-between">
+                      <span className="text-xs font-mono text-text-muted">WebAppInterface.java</span>
+                      <button className="text-accent text-xs hover:underline">Copy Code</button>
+                    </div>
+                    <pre className="flex-1 p-4 font-mono text-xs text-text-muted overflow-auto bg-black/50">
+{`package com.rootlib.hub;
+
+import android.content.Context;
+import android.webkit.JavascriptInterface;
+import android.webkit.WebView;
+import android.widget.Toast;
+import java.io.DataOutputStream;
+import java.io.IOException;
+
+public class WebAppInterface {
+    Context mContext;
+    WebView mWebView;
+
+    WebAppInterface(Context c, WebView w) {
+        mContext = c;
+        mWebView = w;
+    }
+
+    @JavascriptInterface
+    public void showToast(String toast) {
+        Toast.makeText(mContext, toast, Toast.LENGTH_SHORT).show();
+    }
+
+    @JavascriptInterface
+    public void requestRoot() {
+        try {
+            Process p = Runtime.getRuntime().exec("su");
+            DataOutputStream os = new DataOutputStream(p.getOutputStream());
+            os.writeBytes("exit\\n");
+            os.flush();
+            int exitCode = p.waitFor();
+            if (exitCode == 0) showToast("Root Granted");
+            else showToast("Root Denied");
+        } catch (Exception e) {
+            showToast("Error: " + e.getMessage());
+        }
+    }
+
+    @JavascriptInterface
+    public void requestShizuku() {
+        showToast("Requesting Shizuku Permission...");
+    }
+
+    @JavascriptInterface
+    public void startPatch(String patchId, String targetPath, String downloadUrl) {
+        showToast("Starting Patch: " + patchId);
+        runRootCommand("mkdir -p $(dirname " + targetPath + ") && curl -L " + downloadUrl + " -o " + targetPath);
+    }
+
+    @JavascriptInterface
+    public void runRootCommand(String command) {
+        try {
+            Process p = Runtime.getRuntime().exec("su");
+            DataOutputStream os = new DataOutputStream(p.getOutputStream());
+            os.writeBytes(command + "\\n");
+            os.writeBytes("exit\\n");
+            os.flush();
+            p.waitFor();
+        } catch (Exception e) {
+            showToast("Error: " + e.getMessage());
+        }
     }
 }`}
                     </pre>
@@ -874,10 +963,48 @@ public class MainActivity extends Activity {
 {`<?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#0A0A0B">
-    <!-- UI Layout... -->
+    android:layout_height="match_parent">
+
+    <WebView
+        android:id="@+id/webview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
 </RelativeLayout>`}
+                    </pre>
+                  </div>
+
+                  <div className="glass-panel overflow-hidden flex flex-col h-[250px]">
+                    <div className="p-3 bg-white/5 border-b border-border flex items-center justify-between">
+                      <span className="text-xs font-mono text-text-muted">AndroidManifest.xml</span>
+                      <button className="text-accent text-xs hover:underline">Copy Code</button>
+                    </div>
+                    <pre className="flex-1 p-4 font-mono text-xs text-text-muted overflow-auto bg-black/50">
+{`<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.rootlib.hub">
+    
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_SUPERUSER" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+    <application
+        android:hardwareAccelerated="true"
+        android:theme="@android:style/Theme.Black.NoTitleBar"
+        android:label="RootLib Hub"
+        android:allowBackup="true">
+        
+        <activity android:name=".MainActivity" 
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>`}
                     </pre>
                   </div>
                 </div>

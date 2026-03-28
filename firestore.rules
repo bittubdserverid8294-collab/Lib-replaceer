@@ -6,12 +6,18 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return isAuthenticated() && (request.auth.token.email == "bittubdserverid8294@gmail.com" && request.auth.token.email_verified == true);
+    }
+
     // Library validation
     function isValidLibrary(data) {
       return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
              data.targetPath is string && data.targetPath.size() > 0 &&
              data.downloadUrl is string && data.downloadUrl.matches("^https?://.*") &&
-             data.version is string && data.version.size() > 0;
+             data.version is string && data.version.size() > 0 &&
+             (!('type' in data) || data.type in ['root', 'non-root']) &&
+             (!('section' in data) || data.section in ['ff', 'ffmax']);
     }
 
     function isValidSystemPath(data) {
@@ -20,12 +26,12 @@ service cloud.firestore {
 
     match /libraries/{libId} {
       allow read: if true;
-      allow write: if isAuthenticated() && isValidLibrary(request.resource.data);
+      allow write: if isAdmin() && isValidLibrary(request.resource.data);
     }
 
     match /system_paths/{pathId} {
       allow read: if true;
-      allow write: if isAuthenticated() && isValidSystemPath(request.resource.data);
+      allow write: if isAdmin() && isValidSystemPath(request.resource.data);
     }
   }
 }

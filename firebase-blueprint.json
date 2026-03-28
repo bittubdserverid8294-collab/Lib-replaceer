@@ -10,6 +10,8 @@
         "downloadUrl": { "type": "string", "description": "URL to download the replacement .so file" },
         "version": { "type": "string", "description": "Version of the replacement" },
         "notes": { "type": "string", "description": "Developer notes" },
+        "type": { "type": "string", "enum": ["root", "non-root"], "description": "Type of patch (root or shizuku)" },
+        "section": { "type": "string", "enum": ["ff", "ffmax"], "description": "Game section for non-root patches" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "targetPath", "downloadUrl", "version"]
