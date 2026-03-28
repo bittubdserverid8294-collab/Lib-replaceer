@@ -304,17 +304,21 @@ function App() {
   // Firebase State
   const [remoteLibs, setRemoteLibs] = useState<Library[]>([]);
   const [remoteSystemPaths, setRemoteSystemPaths] = useState<SystemPath[]>([]);
-  const [newSystemPath, setNewSystemPath] = useState({
+  const [newSystemPath, setNewSystemPath] = useState<Partial<SystemPath>>({
     path: '',
     description: ''
   });
-  const [newLib, setNewLib] = useState({
+  const [editingPathId, setEditingPathId] = useState<string | null>(null);
+  const [newLib, setNewLib] = useState<Partial<Library>>({
     name: '',
     targetPath: '',
     downloadUrl: '',
     version: '',
-    notes: ''
+    notes: '',
+    type: 'root',
+    section: 'ff'
   });
+  const [editingLibId, setEditingLibId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -354,15 +358,21 @@ function App() {
     };
     testConnection();
 
-    // Simulate initial root request
-    const timer = setTimeout(() => {
-      setShowRootPopup('magisk');
-    }, 2000);
+    // Check for native bridge on start
+    if ((window as any).Android) {
+      // We don't show custom popups anymore, we let the native side handle it
+      setShowRootPopup(null);
+    } else {
+      // Simulate initial root request for browser testing
+      const timer = setTimeout(() => {
+        setShowRootPopup('magisk');
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
 
     return () => {
       unsubscribeLibs();
       unsubscribePaths();
-      clearTimeout(timer);
     };
   }, []);
 
@@ -386,17 +396,33 @@ function App() {
     if (!isAdminAuthenticated) return;
     setIsSubmitting(true);
     try {
-      await addDoc(collection(db, 'libraries'), {
-        ...newLib,
-        createdAt: new Date().toISOString()
-      });
-      setNewLib({ name: '', targetPath: '', downloadUrl: '', version: '', notes: '' });
-      alert("Library added successfully!");
+      if (editingLibId) {
+        // Update existing
+        await setDoc(doc(db, 'libraries', editingLibId), {
+          ...newLib,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        alert("Library updated successfully!");
+        setEditingLibId(null);
+      } else {
+        // Add new
+        await addDoc(collection(db, 'libraries'), {
+          ...newLib,
+          createdAt: new Date().toISOString()
+        });
+        alert("Library added successfully!");
+      }
+      setNewLib({ name: '', targetPath: '', downloadUrl: '', version: '', notes: '', type: 'root', section: 'ff' });
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'libraries');
+      handleFirestoreError(error, editingLibId ? OperationType.UPDATE : OperationType.CREATE, 'libraries');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleEditLib = (lib: Library) => {
+    setNewLib(lib);
+    setEditingLibId(lib.id);
   };
 
   const handleDeleteLib = async (id: string) => {
@@ -413,17 +439,31 @@ function App() {
     if (!isAdminAuthenticated) return;
     setIsSubmitting(true);
     try {
-      await addDoc(collection(db, 'system_paths'), {
-        ...newSystemPath,
-        createdAt: new Date().toISOString()
-      });
+      if (editingPathId) {
+        await setDoc(doc(db, 'system_paths', editingPathId), {
+          ...newSystemPath,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        alert("System path updated successfully!");
+        setEditingPathId(null);
+      } else {
+        await addDoc(collection(db, 'system_paths'), {
+          ...newSystemPath,
+          createdAt: new Date().toISOString()
+        });
+        alert("System path added successfully!");
+      }
       setNewSystemPath({ path: '', description: '' });
-      alert("System path added successfully!");
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'system_paths');
+      handleFirestoreError(error, editingPathId ? OperationType.UPDATE : OperationType.CREATE, 'system_paths');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleEditSystemPath = (path: SystemPath) => {
+    setNewSystemPath(path);
+    setEditingPathId(path.id);
   };
 
   const handleDeleteSystemPath = async (id: string) => {
@@ -443,57 +483,35 @@ function App() {
     setRootGranted(true);
     setAppMode('root');
     setShowRootPopup(null);
+    if ((window as any).Android) {
+      (window as any).Android.requestRoot();
+    }
   };
 
   const handleShizukuGrant = () => {
     setRootGranted(false);
     setAppMode('shizuku');
     setShowRootPopup(null);
+    if ((window as any).Android) {
+      (window as any).Android.requestShizuku();
+    }
   };
 
   const runGamePatch = async (patchId: string) => {
-    const patch = gamePatches.find(p => p.id === patchId);
+    const patch = remoteLibs.find(p => p.id === patchId);
     if (!patch) return;
 
-    setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'downloading', progress: 0 } : p));
-    
     try {
-      // Check if running in Android WebView with our bridge
       if ((window as any).Android) {
         console.log("Native Bridge Detected: Starting real patch for", patchId);
-        
-        // Call Java to start the hidden download and replacement
-        // This is the "Hidden URL" logic - Java knows the secret URL for this ID
-        (window as any).Android.startPatch(patchId, patch.packageName, patch.fileName);
-        
-        // We'll listen for progress updates from Java (simulated here for UI)
-        for (let i = 0; i <= 100; i += 5) {
-          await new Promise(r => setTimeout(r, 200));
-          setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, progress: i } : p));
-          if (i === 50) setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'extracting' } : p));
-          if (i === 80) setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'replacing' } : p));
-        }
+        // We pass the targetPath and downloadUrl directly now
+        (window as any).Android.startPatch(patchId, patch.targetPath, patch.downloadUrl);
       } else {
-        // Fallback for browser testing (Simulation)
-        for (let i = 0; i <= 100; i += 10) {
-          await new Promise(r => setTimeout(r, 300));
-          setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, progress: i } : p));
-        }
-        setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'extracting', progress: 0 } : p));
-        await new Promise(r => setTimeout(r, 1500));
-        setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'replacing', progress: 0 } : p));
-        await new Promise(r => setTimeout(r, 1000));
+        // Browser simulation
+        alert(`Simulating patch: ${patch.name}\nTarget: ${patch.targetPath}\nURL: ${patch.downloadUrl}`);
       }
-
-      setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'completed', progress: 100 } : p));
-      if ((window as any).Android) (window as any).Android.showToast(`Successfully patched ${patch.name}`);
-      else alert(`Successfully replaced assets for ${patch.name}`);
-      
     } catch (error) {
       console.error("Patch error:", error);
-      setGamePatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'error' } : p));
-      if ((window as any).Android) (window as any).Android.showToast("Patch failed! Check Root/Shizuku.");
-      else alert("Failed to replace assets. Check server connection.");
     }
   };
 
@@ -873,52 +891,123 @@ public class MainActivity extends Activity {
                 exit={{ opacity: 0, y: -20 }}
                 className="space-y-8"
               >
-                <div>
-                  <h2 className="text-2xl font-bold mb-2">Game Auto-Replace</h2>
-                  <p className="text-text-muted">Download and automatically replace game assets in specific package directories.</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold mb-2">Game Auto-Replace</h2>
+                    <p className="text-text-muted">Download and automatically replace game assets in specific package directories.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => setAppMode('root')}
+                      className={`px-4 py-2 rounded-lg text-xs font-bold border transition-all ${appMode === 'root' ? 'bg-accent text-bg border-accent' : 'bg-white/5 border-border text-text-muted'}`}
+                    >
+                      ROOT
+                    </button>
+                    <button 
+                      onClick={() => setAppMode('shizuku')}
+                      className={`px-4 py-2 rounded-lg text-xs font-bold border transition-all ${appMode === 'shizuku' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white/5 border-border text-text-muted'}`}
+                    >
+                      NON-ROOT
+                    </button>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {gamePatches.map(patch => (
-                    <div key={patch.id} className="glass-panel p-6 flex flex-col gap-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center border border-accent/20">
-                            <Zap className="text-accent" />
+                {appMode === 'root' ? (
+                  <section className="space-y-6">
+                    <h3 className="text-lg font-bold flex items-center gap-2">
+                      <Shield size={20} className="text-accent" />
+                      Root Patches
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {remoteLibs.filter(l => l.type === 'root').map(lib => (
+                        <div key={lib.id} className="glass-panel p-6 flex flex-col gap-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center border border-accent/20">
+                                <Zap className="text-accent" />
+                              </div>
+                              <div>
+                                <h3 className="font-bold text-lg">{lib.name}</h3>
+                                <p className="text-xs text-text-muted font-mono">{lib.targetPath}</p>
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <h3 className="font-bold text-lg">{patch.name}</h3>
-                            <p className="text-xs text-text-muted font-mono">{patch.packageName}</p>
-                          </div>
+                          <button 
+                            onClick={() => runGamePatch(lib.id)}
+                            className="w-full bg-accent text-bg font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
+                          >
+                            <RefreshCcw size={18} />
+                            Start Replace
+                          </button>
                         </div>
-                        <StatusBadge status={patch.status === 'completed' ? 'active' : patch.status === 'idle' ? 'inactive' : 'pending'} />
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-xs font-mono">
-                          <span className="text-text-muted uppercase">{patch.status}</span>
-                          <span className="text-accent">{patch.progress}%</span>
-                        </div>
-                        <div className="h-2 bg-white/5 rounded-full overflow-hidden border border-border">
-                          <motion.div 
-                            className="h-full bg-accent"
-                            initial={{ width: 0 }}
-                            animate={{ width: `${patch.progress}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      <button 
-                        onClick={() => runGamePatch(patch.id)}
-                        disabled={patch.status !== 'idle' && patch.status !== 'completed' && patch.status !== 'error'}
-                        className="w-full bg-accent text-bg font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform disabled:opacity-50"
-                      >
-                        <RefreshCcw size={18} className={patch.status !== 'idle' && patch.status !== 'completed' ? 'animate-spin' : ''} />
-                        {patch.status === 'idle' ? 'Start Replace' : patch.status === 'completed' ? 'Re-apply' : 'Processing...'}
-                      </button>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </section>
+                ) : (
+                  <div className="space-y-12">
+                    <section className="space-y-6">
+                      <h3 className="text-lg font-bold flex items-center gap-2">
+                        <Zap size={20} className="text-blue-500" />
+                        Free Fire (FF)
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {remoteLibs.filter(l => l.type === 'non-root' && l.section === 'ff').map(lib => (
+                          <div key={lib.id} className="glass-panel p-6 flex flex-col gap-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center border border-blue-500/20">
+                                  <Package className="text-blue-500" />
+                                </div>
+                                <div>
+                                  <h3 className="font-bold text-lg">{lib.name}</h3>
+                                  <p className="text-xs text-text-muted font-mono">{lib.targetPath}</p>
+                                </div>
+                              </div>
+                            </div>
+                            <button 
+                              onClick={() => runGamePatch(lib.id)}
+                              className="w-full bg-blue-500 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
+                            >
+                              <RefreshCcw size={18} />
+                              Apply Patch
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="space-y-6">
+                      <h3 className="text-lg font-bold flex items-center gap-2">
+                        <Zap size={20} className="text-purple-500" />
+                        Free Fire MAX
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {remoteLibs.filter(l => l.type === 'non-root' && l.section === 'ffmax').map(lib => (
+                          <div key={lib.id} className="glass-panel p-6 flex flex-col gap-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-purple-500/10 rounded-xl flex items-center justify-center border border-purple-500/20">
+                                  <Package className="text-purple-500" />
+                                </div>
+                                <div>
+                                  <h3 className="font-bold text-lg">{lib.name}</h3>
+                                  <p className="text-xs text-text-muted font-mono">{lib.targetPath}</p>
+                                </div>
+                              </div>
+                            </div>
+                            <button 
+                              onClick={() => runGamePatch(lib.id)}
+                              className="w-full bg-purple-500 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
+                            >
+                              <RefreshCcw size={18} />
+                              Apply Patch
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  </div>
+                )}
 
                 <div className="glass-panel p-6 border-l-4 border-l-blue-500">
                   <div className="flex gap-4">
@@ -1003,31 +1092,66 @@ public class MainActivity extends Activity {
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Conditional Admin Panels based on AppMode */}
                     <div className="lg:col-span-1 space-y-8">
-                      {appMode === 'root' ? (
                         <div className="glass-panel p-6 border-l-4 border-l-accent">
                           <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
                             <Shield size={20} className="text-accent" />
-                            Root Admin: Lib Swapper
+                            {editingLibId ? 'Edit' : 'Add'} Patch Config
                           </h3>
                           <form onSubmit={handleAddLib} className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                              <button 
+                                type="button"
+                                onClick={() => setNewLib({...newLib, type: 'root'})}
+                                className={`py-2 rounded-lg text-xs font-bold border ${newLib.type === 'root' ? 'bg-accent text-bg border-accent' : 'bg-bg border-border text-text-muted'}`}
+                              >
+                                ROOT
+                              </button>
+                              <button 
+                                type="button"
+                                onClick={() => setNewLib({...newLib, type: 'non-root'})}
+                                className={`py-2 rounded-lg text-xs font-bold border ${newLib.type === 'non-root' ? 'bg-blue-500 text-white border-blue-500' : 'bg-bg border-border text-text-muted'}`}
+                              >
+                                NON-ROOT
+                              </button>
+                            </div>
+
+                            {newLib.type === 'non-root' && (
+                              <div className="grid grid-cols-2 gap-4">
+                                <button 
+                                  type="button"
+                                  onClick={() => setNewLib({...newLib, section: 'ff'})}
+                                  className={`py-2 rounded-lg text-xs font-bold border ${newLib.section === 'ff' ? 'bg-blue-500 text-white border-blue-500' : 'bg-bg border-border text-text-muted'}`}
+                                >
+                                  FF
+                                </button>
+                                <button 
+                                  type="button"
+                                  onClick={() => setNewLib({...newLib, section: 'ffmax'})}
+                                  className={`py-2 rounded-lg text-xs font-bold border ${newLib.section === 'ffmax' ? 'bg-purple-500 text-white border-purple-500' : 'bg-bg border-border text-text-muted'}`}
+                                >
+                                  FF MAX
+                                </button>
+                              </div>
+                            )}
+
                             <div>
-                              <label className="block text-xs text-text-muted uppercase tracking-widest mb-1">Library Name</label>
+                              <label className="block text-xs text-text-muted uppercase tracking-widest mb-1">Name</label>
                               <input 
                                 type="text" 
                                 required
                                 className="w-full bg-bg border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
-                                placeholder="e.g. Optimized LibC"
+                                placeholder="e.g. Headshot Config"
                                 value={newLib.name}
                                 onChange={e => setNewLib({...newLib, name: e.target.value})}
                               />
                             </div>
                             <div>
-                              <label className="block text-xs text-text-muted uppercase tracking-widest mb-1">System Target Path</label>
+                              <label className="block text-xs text-text-muted uppercase tracking-widest mb-1">Target Path</label>
                               <input 
                                 type="text" 
                                 required
                                 className="w-full bg-bg border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
-                                placeholder="e.g. /system/lib/libc.so"
+                                placeholder="/data/data/com.dts.freefireth/files/..."
                                 value={newLib.targetPath}
                                 onChange={e => setNewLib({...newLib, targetPath: e.target.value})}
                               />
@@ -1038,40 +1162,34 @@ public class MainActivity extends Activity {
                                 type="url" 
                                 required
                                 className="w-full bg-bg border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
-                                placeholder="https://server.com/lib.so"
+                                placeholder="https://server.com/patch.zip"
                                 value={newLib.downloadUrl}
                                 onChange={e => setNewLib({...newLib, downloadUrl: e.target.value})}
                               />
                             </div>
-                            <button 
-                              type="submit"
-                              disabled={isSubmitting}
-                              className="w-full bg-accent text-bg font-bold py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-                            >
-                              {isSubmitting ? 'Adding...' : 'Add Root Library'}
-                            </button>
+                            <div className="flex gap-2">
+                              {editingLibId && (
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingLibId(null);
+                                    setNewLib({ name: '', targetPath: '', downloadUrl: '', version: '', notes: '', type: 'root', section: 'ff' });
+                                  }}
+                                  className="flex-1 bg-white/5 text-white font-bold py-2 rounded-lg border border-border"
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                              <button 
+                                type="submit"
+                                disabled={isSubmitting}
+                                className="flex-1 bg-accent text-bg font-bold py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                              >
+                                {isSubmitting ? 'Processing...' : editingLibId ? 'Update Patch' : 'Add Patch'}
+                              </button>
+                            </div>
                           </form>
                         </div>
-                      ) : (
-                        <div className="glass-panel p-6 border-l-4 border-l-blue-500">
-                          <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                            <Zap size={20} className="text-blue-500" />
-                            Non-Root Admin: Game Patches
-                          </h3>
-                          <div className="space-y-4">
-                            <p className="text-xs text-text-muted">Manage game asset replacement configurations for Shizuku mode.</p>
-                            <div className="p-4 bg-white/5 rounded-lg border border-border">
-                              <span className="text-xs font-mono text-accent">Config: ff.zip {'->'} com.dts.freefireth</span>
-                            </div>
-                            <div className="p-4 bg-white/5 rounded-lg border border-border">
-                              <span className="text-xs font-mono text-accent">Config: ffmax.zip {'->'} com.dts.freefiremax</span>
-                            </div>
-                            <button className="w-full bg-blue-500 text-white font-bold py-2 rounded-lg hover:opacity-90 transition-opacity">
-                              Update Patch Configs
-                            </button>
-                          </div>
-                        </div>
-                      )}
 
                       <div className="glass-panel p-6">
                         <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
@@ -1090,26 +1208,74 @@ public class MainActivity extends Activity {
                               onChange={e => setNewSystemPath({...newSystemPath, path: e.target.value})}
                             />
                           </div>
-                          <button 
-                            type="submit"
-                            disabled={isSubmitting}
-                            className="w-full bg-white/10 text-white font-bold py-2 rounded-lg hover:bg-white/20 transition-colors disabled:opacity-50"
-                          >
-                            {isSubmitting ? 'Adding...' : 'Add Path'}
-                          </button>
+                          <div className="flex gap-2">
+                            {editingPathId && (
+                              <button 
+                                type="button"
+                                onClick={() => {
+                                  setEditingPathId(null);
+                                  setNewSystemPath({ path: '', description: '' });
+                                }}
+                                className="flex-1 bg-white/5 text-white font-bold py-2 rounded-lg border border-border"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                            <button 
+                              type="submit"
+                              disabled={isSubmitting}
+                              className="flex-1 bg-white/10 text-white font-bold py-2 rounded-lg hover:bg-white/20 transition-colors disabled:opacity-50"
+                            >
+                              {isSubmitting ? 'Processing...' : editingPathId ? 'Update Path' : 'Add Path'}
+                            </button>
+                          </div>
                         </form>
                       </div>
                     </div>
 
                     {/* Library List */}
-                    <div className="lg:col-span-2 space-y-6">
+                    <div className="lg:col-span-2 space-y-8">
+                      <div className="glass-panel overflow-hidden">
+                        <div className="p-6 border-b border-border flex items-center justify-between">
+                          <h3 className="font-bold">System Paths</h3>
+                          <span className="text-xs text-text-muted">{remoteSystemPaths.length} paths tracked</span>
+                        </div>
+                        <div className="divide-y divide-border">
+                          {remoteSystemPaths.map(path => (
+                            <div key={path.id} className="p-4 flex items-center justify-between hover:bg-white/5 transition-colors">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center border border-blue-500/20">
+                                  <Terminal size={14} className="text-blue-500" />
+                                </div>
+                                <span className="text-sm font-mono text-text-muted">{path.path}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button 
+                                  onClick={() => handleEditSystemPath(path)}
+                                  className="text-accent hover:bg-accent/10 p-2 rounded-lg transition-colors"
+                                >
+                                  <RefreshCcw size={14} />
+                                </button>
+                                <button 
+                                  onClick={() => handleDeleteSystemPath(path.id)}
+                                  className="text-red-500 hover:bg-red-500/10 p-2 rounded-lg transition-colors"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
                       <div className="glass-panel overflow-hidden">
                         <table className="w-full text-left text-sm">
                           <thead className="bg-white/5 border-b border-border">
                             <tr>
-                              <th className="px-6 py-4 font-bold">Library</th>
-                              <th className="px-6 py-4 font-bold">Target Path</th>
-                              <th className="px-6 py-4 font-bold">Version</th>
+                              <th className="px-6 py-4 font-bold">Name</th>
+                              <th className="px-6 py-4 font-bold">Type</th>
+                              <th className="px-6 py-4 font-bold">Section</th>
+                              <th className="px-6 py-4 font-bold">Path</th>
                               <th className="px-6 py-4 font-bold text-right">Actions</th>
                             </tr>
                           </thead>
@@ -1117,15 +1283,34 @@ public class MainActivity extends Activity {
                             {remoteLibs.map(lib => (
                               <tr key={lib.id} className="hover:bg-white/5 transition-colors">
                                 <td className="px-6 py-4 font-medium">{lib.name}</td>
-                                <td className="px-6 py-4 font-mono text-xs text-text-muted">{lib.targetPath}</td>
-                                <td className="px-6 py-4 text-accent">{lib.version}</td>
+                                <td className="px-6 py-4">
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${lib.type === 'root' ? 'bg-accent/10 text-accent' : 'bg-blue-500/10 text-blue-500'}`}>
+                                    {lib.type}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  {lib.section ? (
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${lib.section === 'ff' ? 'bg-blue-500/10 text-blue-500' : 'bg-purple-500/10 text-purple-500'}`}>
+                                      {lib.section}
+                                    </span>
+                                  ) : '-'}
+                                </td>
+                                <td className="px-6 py-4 font-mono text-xs text-text-muted truncate max-w-[150px]">{lib.targetPath}</td>
                                 <td className="px-6 py-4 text-right">
-                                  <button 
-                                    onClick={() => handleDeleteLib(lib.id)}
-                                    className="text-red-500 hover:bg-red-500/10 p-2 rounded-lg transition-colors"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button 
+                                      onClick={() => handleEditLib(lib)}
+                                      className="text-accent hover:bg-accent/10 p-2 rounded-lg transition-colors"
+                                    >
+                                      <RefreshCcw size={16} />
+                                    </button>
+                                    <button 
+                                      onClick={() => handleDeleteLib(lib.id)}
+                                      className="text-red-500 hover:bg-red-500/10 p-2 rounded-lg transition-colors"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}

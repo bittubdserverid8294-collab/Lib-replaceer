@@ -5,29 +5,45 @@ import android.os.Bundle;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Toast;
 
 public class MainActivity extends Activity {
+
     private WebView myWebView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
-        myWebView = new WebView(this);
+        setContentView(R.layout.activity_main);
+
+        myWebView = (WebView) findViewById(R.id.webview);
         WebSettings webSettings = myWebView.getSettings();
         webSettings.setJavaScriptEnabled(true);
         webSettings.setDomStorageEnabled(true);
         webSettings.setAllowFileAccess(true);
         webSettings.setAllowContentAccess(true);
-        
-        // Connect the React UI to Java
-        myWebView.addJavascriptInterface(new WebAppInterface(this), "Android");
-        
-        myWebView.setWebViewClient(new WebViewClient());
-        
-        // Load the React build from assets
+
+        // Add JavaScript interface
+        myWebView.addJavascriptInterface(new WebAppInterface(this, myWebView), "Android");
+
+        myWebView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                // Page loaded
+            }
+        });
+
+        // Load the React app from assets
         myWebView.loadUrl("file:///android_asset/index.html");
-        
-        setContentView(myWebView);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (myWebView.canGoBack()) {
+            myWebView.goBack();
+        } else {
+            super.onBackPressed();
+        }
     }
 }

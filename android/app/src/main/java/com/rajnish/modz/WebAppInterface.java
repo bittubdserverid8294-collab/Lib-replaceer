@@ -2,52 +2,77 @@ package com.rajnish.modz;
 
 import android.content.Context;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebView;
 import android.widget.Toast;
 import java.io.DataOutputStream;
-import java.util.HashMap;
+import java.io.IOException;
 
 public class WebAppInterface {
     Context mContext;
-    private HashMap<String, String> secretUrls;
+    WebView mWebView;
 
-    WebAppInterface(Context c) {
+    WebAppInterface(Context c, WebView w) {
         mContext = c;
-        secretUrls = new HashMap<>();
-        // ADD YOUR SECRET URLS HERE
-        secretUrls.put("ff", "https://your-server.com/files/ff_patch_v1.zip");
-        secretUrls.put("ffmax", "https://your-server.com/files/ffmax_patch_v1.zip");
-    }
-
-    @JavascriptInterface
-    public void startPatch(String patchId, String packageName, String fileName) {
-        String url = secretUrls.get(patchId);
-        if (url == null) {
-            showToast("Invalid Patch ID");
-            return;
-        }
-
-        // 1. Download the file hiddenly
-        // 2. Extract it
-        // 3. Move to /data/data/ using Root
-        runRootCommand("cp /sdcard/Download/" + fileName + " /data/data/" + packageName + "/files/");
-    }
-
-    @JavascriptInterface
-    public void runRootCommand(String cmd) {
-        try {
-            Process p = Runtime.getRuntime().exec("su");
-            DataOutputStream os = new DataOutputStream(p.getOutputStream());
-            os.writeBytes(cmd + "\n");
-            os.writeBytes("exit\n");
-            os.flush();
-            p.waitFor();
-        } catch (Exception e) {
-            showToast("Root Access Denied!");
-        }
+        mWebView = w;
     }
 
     @JavascriptInterface
     public void showToast(String toast) {
         Toast.makeText(mContext, toast, Toast.LENGTH_SHORT).show();
+    }
+
+    @JavascriptInterface
+    public void requestRoot() {
+        try {
+            // This triggers the official Magisk/Superuser grant dialog
+            Process p = Runtime.getRuntime().exec("su");
+            DataOutputStream os = new DataOutputStream(p.getOutputStream());
+            os.writeBytes("exit\n");
+            os.flush();
+            int exitCode = p.waitFor();
+            if (exitCode == 0) {
+                showToast("Root Permission Granted Successfully");
+            } else {
+                showToast("Root Permission Denied");
+            }
+        } catch (Exception e) {
+            showToast("Error requesting root: " + e.getMessage());
+        }
+    }
+
+    @JavascriptInterface
+    public void requestShizuku() {
+        // In a real app, you'd use the Shizuku SDK here
+        // For now, we simulate the official check/request
+        showToast("Requesting Shizuku Permission...");
+        // Simulate success after a short delay
+        mWebView.post(new Runnable() {
+            @Override
+            public void run() {
+                mWebView.loadUrl("javascript:console.log('Shizuku Permission Requested')");
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void startPatch(String patchId, String targetPath, String downloadUrl) {
+        showToast("Starting Patch: " + patchId);
+        // Logic to download from downloadUrl and move to targetPath using su or shizuku
+        runRootCommand("mkdir -p $(dirname " + targetPath + ") && curl -L " + downloadUrl + " -o " + targetPath);
+    }
+
+    @JavascriptInterface
+    public void runRootCommand(String command) {
+        try {
+            Process p = Runtime.getRuntime().exec("su");
+            DataOutputStream os = new DataOutputStream(p.getOutputStream());
+            os.writeBytes(command + "\n");
+            os.writeBytes("exit\n");
+            os.flush();
+            p.waitFor();
+            showToast("Command Executed: " + command);
+        } catch (IOException | InterruptedException e) {
+            showToast("Root Error: " + e.getMessage());
+        }
     }
 }

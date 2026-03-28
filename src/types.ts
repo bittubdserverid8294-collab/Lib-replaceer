@@ -27,6 +27,8 @@ export interface Library {
   version: string;
   notes?: string;
   createdAt: string;
+  type: 'root' | 'non-root';
+  section?: 'ff' | 'ffmax';
 }
 
 export interface SystemPath {
